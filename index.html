@@ -298,6 +298,33 @@
   svg.mood { display: block; min-width: 620px; width: 100%; }
   .mood-cell { fill: transparent; cursor: pointer; }
   .mood-cell:hover { fill: var(--paper-line); opacity: .6; }
+
+  /* progress chart (auto, read-only) */
+  .progress-chart {
+    display: grid;
+    grid-template-columns: 46px 1fr;
+    gap: 0;
+  }
+  .progress-labels {
+    display: flex;
+    flex-direction: column;
+  }
+  .progress-labels div {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    font-size: .64rem;
+    color: var(--ink-soft);
+    padding-right: 6px;
+    justify-content: flex-end;
+  }
+  .progress-svg-wrap { overflow-x: auto; }
+  svg.progress { display: block; min-width: 620px; width: 100%; }
+  .progress-gridline { stroke: var(--border); stroke-width: 1; }
+  .progress-area { fill: var(--accent); opacity: .16; }
+  .progress-path { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .progress-dot { fill: var(--accent); }
+  .progress-daylabel { font-family: 'JetBrains Mono', monospace; font-size: 8px; fill: var(--ink-soft); }
   .mood-gridline { stroke: var(--border); stroke-width: 1; }
   .mood-dayline { stroke: var(--paper-line); stroke-width: 1; }
   .mood-path { fill: none; stroke: var(--rule-red); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -370,6 +397,16 @@
       <table class="habits" id="habitTable"></table>
     </div>
     <button class="add-habit" id="addHabitBtn">+ add habit</button>
+  </section>
+
+  <section class="panel">
+    <h2>Progress <span class="hint">auto-plotted from your ticks — nothing to add manually</span></h2>
+    <div class="progress-chart">
+      <div class="progress-labels" id="progressLabels"></div>
+      <div class="progress-svg-wrap">
+        <svg class="progress" id="progressSvg" viewBox="0 0 620 170" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
   </section>
 
   <section class="panel">
@@ -477,6 +514,7 @@
     html += '</tbody>';
     habitTable.innerHTML = html;
     updateStats();
+    if (typeof renderProgress === 'function') renderProgress();
   }
 
   function escapeHtml(s) {
@@ -523,6 +561,54 @@
     save();
     renderHabits();
   });
+
+  // ---- progress chart (auto, derived from habit ticks) ----
+  var progressLabelsEl = document.getElementById('progressLabels');
+  var progressPct = [100, 75, 50, 25, 0];
+  progressLabelsEl.innerHTML = progressPct.map(function (p) { return '<div>' + p + '%</div>'; }).join('');
+
+  var progressSvg = document.getElementById('progressSvg');
+  var PVB_W = 620, PVB_H = 170;
+
+  function renderProgress() {
+    var totalHabits = state.habits.length;
+    var svgParts = [];
+    for (var l = 0; l <= 4; l++) {
+      var y = (l / 4) * PVB_H;
+      svgParts.push('<line class="progress-gridline" x1="0" y1="' + y + '" x2="' + PVB_W + '" y2="' + y + '"></line>');
+    }
+    var dayW = PVB_W / DAYS;
+    var points = [];
+    for (var d = 1; d <= DAYS; d++) {
+      if (d % 2 === 1) {
+        svgParts.push('<text class="progress-daylabel" x="' + ((d - 1) * dayW + dayW / 2) + '" y="' + (PVB_H + 10) + '" text-anchor="middle">' + d + '</text>');
+      }
+      var checked = 0, marked = 0;
+      if (totalHabits) {
+        state.habits.forEach(function (h) {
+          if (h.marks[d] === 'check') checked++;
+          if (h.marks[d]) marked++;
+        });
+      }
+      if (marked > 0) {
+        var pct = checked / totalHabits;
+        var px = (d - 1) * dayW + dayW / 2;
+        var py = PVB_H - pct * PVB_H;
+        points.push([px, py]);
+      }
+    }
+    if (points.length > 1) {
+      var line = 'M ' + points.map(function (p) { return p[0] + ' ' + p[1]; }).join(' L ');
+      var area = line + ' L ' + points[points.length - 1][0] + ' ' + PVB_H + ' L ' + points[0][0] + ' ' + PVB_H + ' Z';
+      svgParts.push('<path class="progress-area" d="' + area + '"></path>');
+      svgParts.push('<path class="progress-path" d="' + line + '"></path>');
+    }
+    points.forEach(function (p) {
+      svgParts.push('<circle class="progress-dot" cx="' + p[0] + '" cy="' + p[1] + '" r="3"></circle>');
+    });
+    progressSvg.setAttribute('viewBox', '0 0 ' + PVB_W + ' ' + (PVB_H + 20));
+    progressSvg.innerHTML = svgParts.join('');
+  }
 
   // ---- mood chart ----
   var moodLabelsEl = document.getElementById('moodLabels');
